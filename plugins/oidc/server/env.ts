@@ -79,6 +79,29 @@ class OIDCPluginEnvironment extends Environment {
     environment.OIDC_USERNAME_CLAIM ?? "preferred_username";
 
   /**
+   * The OIDC claim to read the user's group membership from, supporting dotted
+   * paths (eg "groups", "roles", "custom.groups"). When set, group-based tenant
+   * isolation is enabled: each group the user belongs to is mapped to its own
+   * Outline workspace. The claim must be included in the userinfo response or
+   * id_token, so remember to request the relevant scope via OIDC_SCOPES.
+   */
+  public OIDC_GROUP_CLAIM = this.toOptionalString(
+    environment.OIDC_GROUP_CLAIM
+  );
+
+  /**
+   * When true, a user that authenticates without any group in the configured
+   * OIDC_GROUP_CLAIM is denied access rather than falling back to the legacy,
+   * unisolated per-domain workspace. Only meaningful when OIDC_GROUP_CLAIM is
+   * set.
+   */
+  @IsOptional()
+  @IsBoolean()
+  public OIDC_REQUIRE_GROUP = this.toOptionalBoolean(
+    environment.OIDC_REQUIRE_GROUP
+  );
+
+  /**
    * A space separated list of OIDC scopes to request. Defaults to "openid
    * profile email".
    */

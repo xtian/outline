@@ -7,6 +7,7 @@ import { toError } from "@shared/utils/error";
 import { slugifyDomain } from "@shared/utils/domains";
 import { parseEmail } from "@shared/utils/email";
 import { isBase64Url } from "@shared/utils/urls";
+import type { AccountProvisionerResult } from "@server/commands/accountProvisioner";
 import accountProvisioner from "@server/commands/accountProvisioner";
 import {
   OIDCMalformedUserInfoError,
@@ -29,7 +30,9 @@ import {
 } from "@server/utils/passport";
 import config from "../../plugin.json";
 import env from "../env";
+import { normalizeGroups } from "./normalizeGroups";
 import { OIDCStrategy } from "./OIDCStrategy";
+import { provisionGroupTeams } from "./provisionGroupTeams";
 import { createContext } from "@server/context";
 
 export interface OIDCEndpoints {
@@ -213,31 +216,64 @@ export function createOIDCRouter(
               user,
               authType: context.state?.auth?.type,
             });
-            const result = await accountProvisioner(ctx, {
-              team: {
-                teamId: team?.id,
-                name: env.APP_NAME,
-                domain,
-                subdomain,
-              },
-              user: {
-                name,
-                email,
-                emailVerified,
-                avatarUrl,
-              },
-              authenticationProvider: {
-                name: config.id,
-                providerId,
-              },
-              authentication: {
-                providerId: profileId,
-                accessToken,
-                refreshToken,
-                expiresIn: params.expires_in,
-                scopes: params.scope ? params.scope.split(" ") : scopes,
-              },
-            });
+
+            // When a group claim is configured, isolation mode is active: the
+            // user is provisioned into one workspace per group they belong to,
+            // relying on Outline's per-team tenant boundary for isolation.
+            const groups = env.OIDC_GROUP_CLAIM
+              ? normalizeGroups(
+                  get(profile, env.OIDC_GROUP_CLAIM) ??
+                    get(token, env.OIDC_GROUP_CLAIM)
+                )
+              : [];
+
+            const authenticationParams = {
+              providerId: profileId,
+              accessToken,
+              refreshToken,
+              expiresIn: params.expires_in,
+              scopes: params.scope ? params.scope.split(" ") : scopes,
+            };
+
+            let result: AccountProvisionerResult;
+            if (env.OIDC_GROUP_CLAIM && groups.length > 0) {
+              result = await provisionGroupTeams(ctx, {
+                groups,
+                user: {
+                  name,
+                  email,
+                  emailVerified,
+                  avatarUrl,
+                },
+                authentication: authenticationParams,
+                oidcHostname: oidcURL.hostname,
+                requestTeamId: team?.id,
+              });
+            } else if (env.OIDC_GROUP_CLAIM && env.OIDC_REQUIRE_GROUP) {
+              throw AuthenticationError(
+                `No group membership was returned in the "${env.OIDC_GROUP_CLAIM}" claim, but is required to sign in.`
+              );
+            } else {
+              result = await accountProvisioner(ctx, {
+                team: {
+                  teamId: team?.id,
+                  name: env.APP_NAME,
+                  domain,
+                  subdomain,
+                },
+                user: {
+                  name,
+                  email,
+                  emailVerified,
+                  avatarUrl,
+                },
+                authenticationProvider: {
+                  name: config.id,
+                  providerId,
+                },
+                authentication: authenticationParams,
+              });
+            }
             // Persist the id_token so a later RP-initiated logout can pass it as
             // the `id_token_hint`, allowing the provider to scope the logout to
             // this session rather than terminating its global SSO session.

@@ -36,10 +36,24 @@ export const switchTeamsList = ({ stores }: { stores: RootStore }) =>
       ),
       visible: ({ currentTeamId }: ActionContext) =>
         currentTeamId !== session.id,
-      url: session.url,
+      // When the target workspace lives on the same origin (single shared
+      // domain), switch by re-minting the session via the server rather than
+      // navigating to its (identical) url, which would be a no-op. On separate
+      // subdomains the external navigation carries the session across hosts.
+      url: isSameOrigin(session.url)
+        ? `/auth/switch?to=${session.id}`
+        : session.url,
       target: "_self",
     })
   ) ?? [];
+
+function isSameOrigin(url: string): boolean {
+  try {
+    return new URL(url, window.location.origin).origin === window.location.origin;
+  } catch (_err) {
+    return false;
+  }
+}
 
 export const switchTeam = createActionWithChildren({
   name: ({ t }) => t("Switch workspace"),

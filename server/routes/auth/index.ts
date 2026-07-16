@@ -3,10 +3,12 @@ import { addMonths } from "date-fns";
 import Koa from "koa";
 import bodyParser from "koa-body";
 import Router from "koa-router";
+import { Op } from "sequelize";
+import env from "@server/env";
 import { AuthenticationError } from "@server/errors";
 import authMiddleware from "@server/middlewares/authentication";
 import coalesceBody from "@server/middlewares/coaleseBody";
-import { Collection, Team, View } from "@server/models";
+import { Collection, Team, User, View } from "@server/models";
 import AuthenticationHelper from "@server/models/helpers/AuthenticationHelper";
 import type { AppState, AppContext, APIContext } from "@server/types";
 import { AuthenticationType } from "@server/types";
@@ -86,6 +88,60 @@ router.get(
         ? `${team?.url}${collection.path}/recent`
         : `${team?.url}/home`
     );
+  }
+);
+
+// Switches the active workspace on a single shared domain by re-minting the
+// session cookie for the target team's account. In cloud/subdomain mode teams
+// live on distinct hosts and switching is a navigation to the team's subdomain
+// instead, so this route is inert there. A user may switch to any workspace
+// that has an account with their same email address, mirroring the semantics of
+// User.availableTeams().
+router.get(
+  "/switch",
+  authMiddleware({ type: AuthenticationType.APP }),
+  async (ctx: APIContext) => {
+    if (env.isCloudHosted) {
+      return ctx.redirect("/");
+    }
+
+    const { user: actor, service } = ctx.state.auth;
+    const teamId = ctx.request.query.to;
+
+    if (typeof teamId !== "string") {
+      throw AuthenticationError("A target workspace is required");
+    }
+
+    // Already the active workspace, nothing to do.
+    if (teamId === actor.teamId) {
+      return ctx.redirect("/home");
+    }
+
+    const target = await User.scope("withTeam").findOne({
+      where: {
+        email: {
+          [Op.iLike]: actor.email,
+        },
+        teamId,
+      },
+    });
+
+    if (!target || target.isSuspended) {
+      throw AuthenticationError("Cannot switch to the requested workspace");
+    }
+
+    const expires = addMonths(new Date(), 3);
+    const jwtToken = target.getSessionToken(expires, service);
+
+    // ensure that the lastActiveAt on user is updated
+    await target.updateActiveAt(ctx, true);
+
+    ctx.cookies.set("accessToken", jwtToken, {
+      sameSite: "lax",
+      expires,
+    });
+
+    return ctx.redirect(`${target.team.url}/home`);
   }
 );
 

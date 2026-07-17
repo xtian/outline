@@ -102,6 +102,43 @@ class OIDCPluginEnvironment extends Environment {
   );
 
   /**
+   * The OIDC claim to read for shared-workspace group membership. When set (and
+   * OIDC_GROUP_CLAIM isolation is active), every user is additionally
+   * provisioned into a single shared workspace: department groups from this
+   * claim are synced to Outline Groups and mapped to read-only-by-default
+   * collections their members may edit. Independent of OIDC_GROUP_CLAIM so the
+   * per-group workspaces and the shared workspace can read different claims. The
+   * claim must be requested via OIDC_SCOPES.
+   */
+  public OIDC_SHARED_GROUP_CLAIM = this.toOptionalString(
+    environment.OIDC_SHARED_GROUP_CLAIM
+  );
+
+  /**
+   * The value in OIDC_SHARED_GROUP_CLAIM that marks a user as a shared-workspace
+   * administrator: they are promoted to the Outline admin role and their group
+   * is granted write access to every collection. Defaults to "party-admin".
+   */
+  public OIDC_SHARED_ADMIN_GROUP =
+    environment.OIDC_SHARED_ADMIN_GROUP ?? "party-admin";
+
+  /**
+   * Prefix identifying which OIDC_SHARED_GROUP_CLAIM values are departments.
+   * Each matching group is synced as an Outline Group and mapped to a
+   * read-only-by-default collection its members may edit. Defaults to
+   * "department-".
+   */
+  public OIDC_SHARED_DEPARTMENT_PREFIX =
+    environment.OIDC_SHARED_DEPARTMENT_PREFIX ?? "department-";
+
+  /**
+   * The display name of the shared workspace. Defaults to APP_NAME.
+   */
+  public OIDC_SHARED_TEAM_NAME = this.toOptionalString(
+    environment.OIDC_SHARED_TEAM_NAME
+  );
+
+  /**
    * A space separated list of OIDC scopes to request. Defaults to "openid
    * profile email".
    */

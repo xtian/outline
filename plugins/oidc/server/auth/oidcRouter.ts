@@ -33,6 +33,7 @@ import env from "../env";
 import { normalizeGroups } from "./normalizeGroups";
 import { OIDCStrategy } from "./OIDCStrategy";
 import { provisionGroupTeams } from "./provisionGroupTeams";
+import { provisionSharedWorkspace } from "./provisionSharedWorkspace";
 import { createContext } from "@server/context";
 
 export interface OIDCEndpoints {
@@ -249,6 +250,35 @@ export function createOIDCRouter(
                 oidcHostname: oidcURL.hostname,
                 requestTeamId: team?.id,
               });
+
+              // In addition to the per-group isolation workspaces, provision the
+              // user into a single shared workspace with per-department
+              // collections. This reads its own claim (which may include groups,
+              // like party-admin, absent from OIDC_GROUP_CLAIM) and must never
+              // block the primary login.
+              if (env.OIDC_SHARED_GROUP_CLAIM) {
+                try {
+                  const sharedGroups = normalizeGroups(
+                    get(profile, env.OIDC_SHARED_GROUP_CLAIM) ??
+                      get(token, env.OIDC_SHARED_GROUP_CLAIM)
+                  );
+                  await provisionSharedWorkspace(ctx, {
+                    user: { name, email, emailVerified, avatarUrl },
+                    authentication: authenticationParams,
+                    oidcHostname: oidcURL.hostname,
+                    departmentGroups: sharedGroups.filter((group) =>
+                      group.startsWith(env.OIDC_SHARED_DEPARTMENT_PREFIX)
+                    ),
+                    isAdmin: sharedGroups.includes(env.OIDC_SHARED_ADMIN_GROUP),
+                  });
+                } catch (err) {
+                  Logger.error(
+                    "Failed to provision shared workspace during OIDC login",
+                    toError(err),
+                    { email }
+                  );
+                }
+              }
             } else if (env.OIDC_GROUP_CLAIM && env.OIDC_REQUIRE_GROUP) {
               throw AuthenticationError(
                 `No group membership was returned in the "${env.OIDC_GROUP_CLAIM}" claim, but is required to sign in.`

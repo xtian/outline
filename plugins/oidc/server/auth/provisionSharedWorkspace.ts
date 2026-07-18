@@ -184,16 +184,11 @@ async function reconcileCollections(
       continue;
     }
 
-    const collection = await ensureCollection(ctx, {
+    await ensureDepartmentCollection(ctx, {
       teamId: team.id,
       member,
-      name,
-      transaction,
-    });
-    await ensureGroupMembership(ctx, {
-      collectionId: collection.id,
       group,
-      member,
+      name,
       transaction,
     });
   }
@@ -223,30 +218,51 @@ async function reconcileCollections(
 }
 
 /**
- * Finds the department collection by its (stable, machine) name or creates it as
- * read-only for the whole workspace. A newly created collection immediately
- * inherits the admin group's write access if that group already exists.
+ * Ensures the read-only-by-default collection for a department exists and that
+ * its group is granted write. The department↔collection link is the group's
+ * collection membership, not the collection name, so admins may freely rename
+ * the collection without it being recreated on a later login. The department
+ * (machine) name is used only as the initial title of a freshly created
+ * collection.
  */
-async function ensureCollection(
+async function ensureDepartmentCollection(
   ctx: APIContext,
   {
     teamId,
     member,
+    group,
     name,
     transaction,
   }: {
     teamId: string;
     member: User;
+    group: Group;
     name: string;
     transaction: Transaction;
   }
-): Promise<Collection> {
-  const existing = await Collection.findOne({
-    where: { teamId, name },
+): Promise<void> {
+  // A collection-level membership (documentId null) for this group is the stable
+  // link to its collection, surviving renames of the collection itself.
+  const membership = await GroupMembership.findOne({
+    where: {
+      groupId: group.id,
+      collectionId: { [Op.ne]: null },
+      documentId: { [Op.eq]: null },
+    },
     transaction,
   });
-  if (existing) {
-    return existing;
+
+  if (membership?.collectionId) {
+    const existing = await Collection.findByPk(membership.collectionId, {
+      transaction,
+    });
+    if (existing) {
+      if (membership.permission !== CollectionPermission.ReadWrite) {
+        membership.permission = CollectionPermission.ReadWrite;
+        await membership.save({ transaction });
+      }
+      return;
+    }
   }
 
   const collection = await Collection.createWithCtx(ctx, {
@@ -257,6 +273,14 @@ async function ensureCollection(
     sort: Collection.DEFAULT_SORT,
   });
 
+  await ensureGroupMembership(ctx, {
+    collectionId: collection.id,
+    group,
+    member,
+    transaction,
+  });
+
+  // A newly created collection immediately inherits the admin group's write.
   const adminGroup = await Group.findOne({
     where: { teamId, name: env.OIDC_SHARED_ADMIN_GROUP },
     transaction,
@@ -269,8 +293,6 @@ async function ensureCollection(
       transaction,
     });
   }
-
-  return collection;
 }
 
 /**

@@ -117,6 +117,12 @@ router.get(
       return ctx.redirect("/home");
     }
 
+    if (!actor.email) {
+      throw AuthenticationError(
+        "An email address is required to switch workspaces"
+      );
+    }
+
     const target = await User.scope("withTeam").findOne({
       where: {
         email: {

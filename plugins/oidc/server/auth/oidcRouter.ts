@@ -260,12 +260,11 @@ export function createOIDCRouter(
               result = await provisionGroupTeams(ctx, {
                 groups,
                 user: {
-                  name,
+                  avatarUrl,
                   email,
                   emailVerified,
-                  avatarUrl,
-
                   language,
+                  name,
                 },
                 authentication: authenticationParams,
                 oidcHostname: oidcURL.hostname,
@@ -284,7 +283,7 @@ export function createOIDCRouter(
                       get(token, env.OIDC_SHARED_GROUP_CLAIM)
                   );
                   await provisionSharedWorkspace(ctx, {
-                    user: { name, email, emailVerified, avatarUrl },
+                    user: { avatarUrl, email, emailVerified, language, name },
                     authentication: authenticationParams,
                     oidcHostname: oidcURL.hostname,
                     departmentGroups: sharedGroups.filter((group) =>
@@ -313,12 +312,11 @@ export function createOIDCRouter(
                   subdomain,
                 },
                 user: {
-                  name,
+                  avatarUrl,
                   email,
                   emailVerified,
-                  avatarUrl,
-
                   language,
+                  name,
                 },
                 authenticationProvider: {
                   name: config.id,

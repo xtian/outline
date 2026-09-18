@@ -30,10 +30,11 @@ function sharedProviderId(oidcHostname: string): string {
 type Props = {
   /** Details of the user logging in from the SSO provider. */
   user: {
-    name: string;
+    avatarUrl?: string | null;
     email: string;
     emailVerified?: boolean;
-    avatarUrl?: string | null;
+    language?: string;
+    name: string;
   };
   /** Details of the authentication from the SSO provider. */
   authentication: {

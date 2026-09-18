@@ -13,10 +13,11 @@ type Props = {
   groups: string[];
   /** Details of the user logging in from the SSO provider. */
   user: {
-    name: string;
+    avatarUrl?: string | null;
     email: string;
     emailVerified?: boolean;
-    avatarUrl?: string | null;
+    language?: string;
+    name: string;
   };
   /** Details of the authentication from the SSO provider. */
   authentication: {
@@ -66,8 +67,10 @@ export async function provisionGroupTeams(
   // Defensive: ensure a stable, de-duplicated ordering for landing selection.
   const sortedGroups = Array.from(new Set(groups)).sort();
 
-  const provisioned: Array<{ group: string; result: AccountProvisionerResult }> =
-    [];
+  const provisioned: Array<{
+    group: string;
+    result: AccountProvisionerResult;
+  }> = [];
 
   for (const group of sortedGroups) {
     try {
@@ -163,7 +166,9 @@ async function reconcileStaleMemberships(
   });
 
   const staleTeamIds = providers
-    .filter((provider) => !activeGroups.has(provider.providerId.slice(prefix.length)))
+    .filter(
+      (provider) => !activeGroups.has(provider.providerId.slice(prefix.length))
+    )
     .map((provider) => provider.teamId);
 
   if (staleTeamIds.length === 0) {
